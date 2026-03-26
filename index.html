@@ -344,9 +344,14 @@
 
         if (formType === 'membership') {
           const [year, month, day] = data.startDate.split('-').map(Number);
-          const end = new Date(year + 1, month - 1, day - 1);
+          let addedYears = 1; 
+          const validRenewals = (data.renewals || []).filter(r => r.date && r.fee);
+          addedYears += validRenewals.length; 
+          
+          const end = new Date(year + addedYears, month - 1, day - 1);
           const endDateStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
-          itemToSave = { ...itemToSave, endDate: endDateStr };
+          
+          itemToSave = { ...itemToSave, endDate: endDateStr, renewals: validRenewals };
 
           if (user && syncCode && !authError) {
             try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', `memberships_${syncCode}`, docId), itemToSave); } catch (err) {}
@@ -509,6 +514,9 @@
     }
 
     function DashboardView({ theme, memberships, pendingMerch, subscriptions, expiringMemberships, cycleTheme, onOpenSyncModal, authError }) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const activeMembershipsCount = memberships.filter(m => m.endDate >= todayStr).length;
+
       return (
         <div className="space-y-6">
           <div className="flex justify-between items-center mb-6">
@@ -533,7 +541,7 @@
           <div className="grid grid-cols-2 gap-4">
             <div className={`${theme.card} p-5 rounded-2xl`}>
               <p className={`${theme.cardSub} text-xs font-bold tracking-widest uppercase mb-2`}>有效會員</p>
-              <p className={`${theme.cardText} text-4xl font-black`}>{memberships.length}</p>
+              <p className={`${theme.cardText} text-4xl font-black`}>{activeMembershipsCount}</p>
             </div>
             <div className={`${theme.card} p-5 rounded-2xl`}>
               <p className={`${theme.cardSub} text-xs font-bold tracking-widest uppercase mb-2`}>待到貨周邊</p>
@@ -631,17 +639,27 @@
       const toTWD = (amount, currency) => Math.round(parseFloat(amount || 0) * (exchangeRates[currency] || 1));
       const stats = useMemo(() => {
         const groupData = {};
+        
+        // 統計會員費 (含續會)
         memberships.forEach(m => { 
           if (!groupData[m.group]) groupData[m.group] = { membership: 0, merch: 0, subscription: 0 }; 
           groupData[m.group].membership += toTWD(m.fee, m.currency); 
+          if (m.renewals) {
+            m.renewals.forEach(r => {
+              if (r.fee && r.date) groupData[m.group].membership += toTWD(r.fee, m.currency);
+            });
+          }
         });
+        
+        // 統計周邊
         merch.forEach(m => { 
           if (!groupData[m.group]) groupData[m.group] = { membership: 0, merch: 0, subscription: 0 }; 
           groupData[m.group].merch += toTWD(m.price, m.currency); 
         });
+        
+        // 統計訂閱 (自動推算)
         subscriptions.forEach(s => {
           if (!groupData[s.group]) groupData[s.group] = { membership: 0, merch: 0, subscription: 0 }; 
-          // 自動推算從開始日期到今天為止，總共扣了幾期費用
           const cycles = calculateCycles(s.startDate, s.paymentCycle);
           groupData[s.group].subscription += (toTWD(s.fee, s.currency) * cycles);
         });
@@ -688,7 +706,7 @@
           </div>
 
           <section className="space-y-3">
-            <h2 className={`text-xs font-black tracking-widest uppercase px-2 ${theme.cardText}`}>FC入會支出</h2>
+            <h2 className={`text-xs font-black tracking-widest uppercase px-2 ${theme.cardText}`}>FC入會與續會支出</h2>
             {Object.keys(stats.groupData).filter(g => stats.groupData[g].membership > 0).length === 0 && <p className={`${theme.cardText} opacity-40 text-xs font-bold uppercase text-center py-4`}>[ 尚無紀錄 ]</p>}
             <div className="space-y-3">
               {Object.entries(stats.groupData).filter(([_, data]) => data.membership > 0).map(([group, data]) => (
@@ -736,7 +754,8 @@
       const [formData, setFormData] = useState({
         group: '', fandomName: '', memberName: '', memberNo: '', region: 'J-Pop', startDate: '', platform: '', fee: '', currency: 'TWD', account: '', color1: '#1C3052', color2: '#257199',
         items: [{ name: '', quantity: 1 }], price: '', buyType: 'preorder', estimatedArrival: '', url: '', seller: '', paymentMethod: 'cod', status: 'Pre-ordered', orderNo: '', date: '',
-        category: '泡泡', paymentCycle: 'monthly', deductionDate: '', notes: '' 
+        category: '泡泡', paymentCycle: 'monthly', deductionDate: '', notes: '',
+        renewals: [] // 續會紀錄
       });
 
       useEffect(() => { 
@@ -744,6 +763,9 @@
           let dataToSet = { ...initialData };
           if (!isMembership && !isSubscription && !initialData.items && initialData.itemName) {
             dataToSet.items = [{ name: initialData.itemName, quantity: 1 }];
+          }
+          if (isMembership && !initialData.renewals) {
+            dataToSet.renewals = [];
           }
           setFormData(prev => ({ ...prev, ...dataToSet })); 
         } 
@@ -766,6 +788,20 @@
         }
       };
 
+      // 續會紀錄處理
+      const handleRenewalChange = (index, field, value) => {
+        const newRenewals = [...formData.renewals];
+        newRenewals[index][field] = value;
+        setFormData({ ...formData, renewals: newRenewals });
+      };
+      const addRenewal = () => {
+        setFormData({ ...formData, renewals: [...formData.renewals, { date: '', fee: '' }] });
+      };
+      const removeRenewal = (index) => {
+        const newRenewals = formData.renewals.filter((_, i) => i !== index);
+        setFormData({ ...formData, renewals: newRenewals });
+      };
+
       const labelClasses = `block text-[10px] font-black tracking-widest mb-1.5 uppercase ${theme.cardSub}`;
       const inputBase = `${theme.input} block w-full min-w-0 max-w-full overflow-hidden px-4 h-[52px] rounded-xl text-sm outline-none transition-all box-border appearance-none m-0`;
 
@@ -774,10 +810,8 @@
 
       return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4">
-          {/* 強制設定外圍最大高度，並隱藏溢出，讓內層容器負責滾動 */}
           <div className={`w-full max-w-md rounded-t-3xl sm:rounded-2xl overflow-hidden flex flex-col ${theme.card} animate-in slide-in-from-bottom-10 max-h-[90vh] shadow-2xl`}>
             
-            {/* 內層滾動容器，包含標題與表單 */}
             <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
               <div className="flex justify-between items-center mb-6 pb-2">
                 <h2 className={`text-sm font-black uppercase tracking-widest ${theme.cardText}`}>{titleText}{typeText}</h2>
@@ -797,7 +831,7 @@
                     </div>
                     <div><label className={labelClasses}>會員編號</label><input required name="memberNo" value={formData.memberNo} onChange={handleChange} className={inputBase} /></div>
                     <div className="flex justify-between items-center w-full gap-3">
-                      <div className="w-[45%]"><label className={labelClasses}>開始日期</label><input type="date" required name="startDate" value={formData.startDate} onChange={handleChange} className={inputBase + " px-1 text-[12px]"} /></div>
+                      <div className="w-[45%]"><label className={labelClasses}>入會日期</label><input type="date" required name="startDate" value={formData.startDate} onChange={handleChange} className={inputBase + " px-1 text-[12px]"} /></div>
                       <div className="w-[45%]">
                         <label className={labelClasses}>應援色</label>
                         <div className="flex gap-2"><input type="color" name="color1" value={formData.color1} onChange={handleChange} className="w-1/2 h-[52px] border-2 border-[#1C3052] rounded-xl p-0 cursor-pointer overflow-hidden shadow-sm box-border" /><input type="color" name="color2" value={formData.color2} onChange={handleChange} className="w-1/2 h-[52px] border-2 border-[#1C3052] rounded-xl p-0 cursor-pointer overflow-hidden shadow-sm box-border" /></div>
@@ -807,9 +841,33 @@
                       <div><label className={labelClasses}>購入平台</label><input name="platform" value={formData.platform} onChange={handleChange} className={inputBase} /></div>
                       <div className="flex justify-between items-center w-full gap-3">
                         <div className="w-[30%]"><label className={labelClasses}>幣別</label><select name="currency" value={formData.currency} onChange={handleChange} className={inputBase}><option value="TWD">TWD</option><option value="JPY">JPY</option><option value="KRW">KRW</option><option value="USD">USD</option></select></div>
-                        <div className="w-[65%]"><label className={labelClasses}>會費</label><input type="number" name="fee" value={formData.fee} onChange={handleChange} className={inputBase} /></div>
+                        <div className="w-[65%]"><label className={labelClasses}>首年入會費</label><input type="number" name="fee" value={formData.fee} onChange={handleChange} className={inputBase} /></div>
                       </div>
                       <div><label className={labelClasses}>登入帳號</label><input name="account" value={formData.account} onChange={handleChange} className={inputBase} /></div>
+                    </div>
+
+                    {/* 續會紀錄區塊 */}
+                    <div className={`pt-4 border-t ${theme.name === 'Retro Pop' ? 'border-[#1C3052]/20' : 'border-black/5 dark:border-white/5'}`}>
+                      <label className={labelClasses}>續會紀錄 (選填)</label>
+                      <p className={`text-[9px] mb-3 opacity-60 ${theme.cardText}`}>新增續會紀錄後，會員到期日將自動展延 1 年。</p>
+                      <div className="space-y-3">
+                        {formData.renewals.map((r, index) => (
+                          <div key={index} className="flex items-center gap-2 w-full">
+                            <div className="w-[50%] min-w-0">
+                              <input type="date" required value={r.date} onChange={(e) => handleRenewalChange(index, 'date', e.target.value)} className={`${theme.input} block w-full px-2 h-[52px] rounded-xl text-xs outline-none transition-all appearance-none box-border`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <input type="number" required placeholder="續會費" value={r.fee} onChange={(e) => handleRenewalChange(index, 'fee', e.target.value)} className={`${theme.input} block w-full px-3 h-[52px] rounded-xl text-sm outline-none transition-all appearance-none box-border`} />
+                            </div>
+                            <button type="button" onClick={() => removeRenewal(index)} className={`h-[52px] w-[48px] flex items-center justify-center rounded-xl shrink-0 transition-transform active:scale-95 ${theme.name === 'Retro Pop' ? 'bg-[#D12627] border-2 border-[#1C3052] text-white shadow-[2px_2px_0_#1C3052]' : 'bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20'}`}>
+                              <X size={20} strokeWidth={3} />
+                            </button>
+                          </div>
+                        ))}
+                        <button type="button" onClick={addRenewal} className={`w-full py-3 rounded-xl border-2 border-dashed text-xs font-black uppercase tracking-widest transition-all box-border ${theme.name === 'Retro Pop' ? 'border-[#1C3052]/30 text-[#1C3052]/60 hover:border-[#1C3052] hover:text-[#1C3052]' : 'border-current/20 opacity-50 hover:opacity-100 hover:border-current/50'}`}>
+                          + 新增續約
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1028,7 +1086,7 @@
                   {m.status === 'Received' ? <CheckCircle2 className="w-8 h-8" /> : <div className="w-8 h-8 rounded-full border-4 border-current opacity-20"></div>}
                 </button>
                 <div className="flex-1 min-w-0" onClick={() => onOpenDetails(m)}>
-                  <h3 className={`font-black text-sm truncate ${theme.cardText}`}>{m.group}</h3>
+                  <h3 className={`font-black text-sm uppercase truncate ${theme.cardText}`}>{m.group}</h3>
                   <p className={`text-xs mt-1 truncate ${m.status === 'Received' ? 'line-through opacity-40' : theme.cardSub}`}>[{m.buyType === 'instock' ? '現貨' : '預購'}] {displayTitle}</p>
                   <div className="flex justify-between items-center mt-2">
                     <span className={`text-[10px] ${theme.cardText} opacity-40 font-mono font-bold tracking-tighter`}>{m.date}</span>
@@ -1044,35 +1102,51 @@
     }
 
     function MembershipsView({ theme, memberships, onOpenDetails }) {
+      const todayStr = new Date().toISOString().split('T')[0];
+
       return (
         <div className="space-y-8 px-1">
-          {memberships.map(m => (
-            <div key={m.id} className="flex flex-col items-center">
-              <div className={`w-full rounded-2xl overflow-hidden shadow-2xl relative ${theme.card} !p-0 !border-0 active:scale-[0.98] transition-transform`} onClick={() => onOpenDetails(m)}>
-                <div 
-                  className={`h-44 flex flex-col items-center justify-center relative px-6 ${theme.vipTop}`} 
-                  style={m.color1 && m.color2 ? { backgroundImage: `linear-gradient(135deg, ${m.color1}, ${m.color2})` } : {}}
-                >
-                  <div className="absolute top-4 left-4"><span className="text-[10px] font-black px-2 py-1 rounded-sm uppercase bg-white/20 text-white backdrop-blur-md border border-white/30 tracking-widest">{m.region}</span></div>
-                  <div className="z-10 text-center">
-                    <div className="w-14 h-14 mx-auto mb-3 border-4 border-white flex items-center justify-center transform rotate-45"><span className="text-white font-black text-3xl transform -rotate-45">{m.group.charAt(0)}</span></div>
-                    <h3 className="text-2xl font-black text-white tracking-[0.2em] drop-shadow-xl">{m.group}</h3>
+          {memberships.map(m => {
+            const isExpired = m.endDate < todayStr;
+            
+            return (
+              <div key={m.id} className={`flex flex-col items-center ${isExpired ? 'opacity-70 grayscale-[0.6]' : ''}`}>
+                <div className={`w-full rounded-2xl overflow-hidden shadow-2xl relative ${theme.card} !p-0 !border-0 active:scale-[0.98] transition-transform`} onClick={() => onOpenDetails(m)}>
+                  
+                  {/* 過期浮水印 */}
+                  {isExpired && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/10 backdrop-blur-[1px] pointer-events-none">
+                      <div className="bg-red-600 text-white px-5 py-1.5 rounded-lg font-black tracking-widest text-xl transform -rotate-12 border-2 border-white shadow-2xl">
+                        EXPIRED
+                      </div>
+                    </div>
+                  )}
+
+                  <div 
+                    className={`h-44 flex flex-col items-center justify-center relative px-6 ${theme.vipTop}`} 
+                    style={m.color1 && m.color2 ? { backgroundImage: `linear-gradient(135deg, ${m.color1}, ${m.color2})` } : {}}
+                  >
+                    <div className="absolute top-4 left-4"><span className="text-[10px] font-black px-2 py-1 rounded-sm uppercase bg-white/20 text-white backdrop-blur-md border border-white/30 tracking-widest">{m.region}</span></div>
+                    <div className="z-10 text-center">
+                      <div className="w-14 h-14 mx-auto mb-3 border-4 border-white flex items-center justify-center transform rotate-45"><span className="text-white font-black text-3xl transform -rotate-45">{m.group.charAt(0)}</span></div>
+                      <h3 className="text-2xl font-black text-white tracking-[0.2em] uppercase drop-shadow-xl">{m.group}</h3>
+                    </div>
+                  </div>
+                  <div className={`px-5 py-5 flex justify-between items-end ${theme.vipBottom}`}>
+                    <div className="flex-1 min-w-0 pr-4">
+                      <div className={`${theme.vipSubText} text-[11px] font-black mb-2 tracking-widest opacity-60 uppercase`}>{m.fandomName} OFFICIAL FANCLUB</div>
+                      <div className={`${theme.vipText} text-sm font-black truncate`}>{m.memberName} <span className="mx-2 opacity-20">•</span> <span className="font-mono tracking-tighter">{m.memberNo}</span></div>
+                    </div>
+                    <div className="bg-white p-2 rounded-lg flex-shrink-0 shadow-inner border border-gray-100"><QrCode size={44} className="text-black" /></div>
                   </div>
                 </div>
-                <div className={`px-5 py-5 flex justify-between items-end ${theme.vipBottom}`}>
-                  <div className="flex-1 min-w-0 pr-4">
-                    <div className={`${theme.vipSubText} text-[11px] font-black mb-2 tracking-widest opacity-60`}>{m.group} OFFICIAL FANCLUB</div>
-                    <div className={`${theme.vipText} text-sm font-black truncate`}>{m.memberName} <span className="mx-2 opacity-20">•</span> <span className="font-mono tracking-tighter">{m.memberNo}</span></div>
-                  </div>
-                  <div className="bg-white p-2 rounded-lg flex-shrink-0 shadow-inner border border-gray-100"><QrCode size={44} className="text-black" /></div>
+                <div className="w-full mt-4 flex justify-between items-center px-2">
+                  <div className={`text-[10px] font-mono font-bold px-4 py-2 rounded-full ${theme.pill} opacity-70`}>{m.startDate} ~ {m.endDate}</div>
+                  <button onClick={() => onOpenDetails(m)} className={`text-[10px] px-5 py-2 rounded-full font-black uppercase tracking-widest ${theme.pillBtn} transition-all`}>Details</button>
                 </div>
               </div>
-              <div className="w-full mt-4 flex justify-between items-center px-2">
-                <div className={`text-[10px] font-mono font-bold px-4 py-2 rounded-full ${theme.pill} opacity-70`}>{m.startDate} ~ {m.endDate}</div>
-                <button onClick={() => onOpenDetails(m)} className={`text-[10px] px-5 py-2 rounded-full font-black uppercase tracking-widest ${theme.pillBtn} transition-all`}>Details</button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {memberships.length === 0 && <p className="text-center py-20 opacity-30 text-xs font-bold uppercase tracking-tighter">No memberships found</p>}
         </div>
       );
@@ -1149,19 +1223,30 @@
       const btnBase = "flex-1 flex items-center justify-center gap-2 py-4 rounded-xl border-2 font-black text-sm active:translate-y-1 transition-all box-border";
       const isRetro = theme.name === 'Retro Pop';
       
+      const validRenewals = membership.renewals?.filter(r => r.date && r.fee) || [];
+      const totalFee = Number(membership.fee) + validRenewals.reduce((sum, r) => sum + Number(r.fee), 0);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const isExpired = membership.endDate < todayStr;
+
       return (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[120] flex items-center justify-center p-4">
           <div className={`w-full max-w-sm rounded-3xl overflow-hidden ${theme.card} animate-in zoom-in-95 flex flex-col relative shadow-2xl max-h-[90vh]`}>
             <button onClick={onClose} className={`absolute top-4 right-4 z-20 ${theme.cardText}`}><X size={24} /></button>
             <div className="overflow-y-auto p-6 space-y-6 pb-8">
               <div className="text-center pt-4">
-                 <div className="w-16 h-16 mx-auto mb-4 border-4 flex items-center justify-center transform rotate-45" style={{ backgroundImage: `linear-gradient(135deg, ${membership.color1}, ${membership.color2})`, borderColor: 'white' }}><span className="text-white font-black text-3xl transform -rotate-45">{membership.group.charAt(0)}</span></div>
-                 <h2 className={`text-2xl font-black tracking-widest ${theme.cardText}`}>{membership.group}</h2>
-                 <p className={`text-[10px] font-black tracking-widest mt-1 ${theme.cardText} opacity-60`}>{membership.fandomName}</p>
+                 <div className={`w-16 h-16 mx-auto mb-4 border-4 flex items-center justify-center transform rotate-45 ${isExpired ? 'grayscale' : ''}`} style={{ backgroundImage: `linear-gradient(135deg, ${membership.color1}, ${membership.color2})`, borderColor: 'white' }}><span className="text-white font-black text-3xl transform -rotate-45">{membership.group.charAt(0)}</span></div>
+                 <h2 className={`text-2xl font-black uppercase tracking-widest ${theme.cardText}`}>
+                    {membership.group}
+                 </h2>
+                 <div className="flex items-center justify-center gap-2 mt-1">
+                   {isExpired && <span className="text-[10px] font-black uppercase tracking-widest bg-red-600 text-white px-2 py-0.5 rounded-sm">已過期</span>}
+                   <p className={`text-[10px] font-black tracking-widest ${theme.cardText} opacity-60`}>{membership.fandomName}</p>
+                 </div>
               </div>
               
               <div className={`p-5 rounded-2xl ${isRetro ? 'bg-[#EBB134] border-2 border-[#1C3052]' : 'bg-black/5 dark:bg-white/5'} space-y-4`}>
-                <h3 className={`text-[10px] font-black uppercase border-b pb-2 ${theme.cardText} ${isRetro ? 'border-[#1C3052]/30' : 'border-current/20 opacity-50'}`}>基本資訊</h3>
+                <h3 className={`text-[10px] font-black uppercase border-b pb-2 ${theme.cardText} ${isRetro ? 'border-[#1C3052]/30' : 'border-current/20 opacity-50'}`}>會員卡資訊</h3>
                 <div className={theme.cardText}>
                   <p className="text-[9px] font-bold uppercase opacity-60">會員名稱</p>
                   <p className="text-sm font-bold">{membership.memberName}</p>
@@ -1172,19 +1257,33 @@
                 </div>
                 <div className={`grid grid-cols-2 gap-2 ${theme.cardText}`}>
                   <div><p className="text-[9px] font-bold uppercase opacity-60">開始</p><p className="font-mono text-xs font-bold">{membership.startDate}</p></div>
-                  <div><p className="text-[9px] font-bold uppercase opacity-60">結束</p><p className="font-mono text-xs font-bold">{membership.endDate}</p></div>
+                  <div><p className="text-[9px] font-bold uppercase opacity-60">目前到期日</p><p className={`font-mono text-xs font-bold ${isExpired ? 'text-red-500' : ''}`}>{membership.endDate}</p></div>
                 </div>
               </div>
 
               <div className={`p-5 rounded-2xl ${isRetro ? 'bg-[#EBB134] border-2 border-[#1C3052]' : 'bg-black/5 dark:bg-white/5'} space-y-4`}>
-                <h3 className={`text-[10px] font-black uppercase border-b pb-2 ${theme.cardText} ${isRetro ? 'border-[#1C3052]/30' : 'border-current/20 opacity-50'}`}>購入資訊</h3>
-                <div className={`grid grid-cols-2 gap-2 ${theme.cardText}`}>
-                  <div><p className="text-[9px] font-bold uppercase opacity-60">入會費</p><p className="text-sm font-bold font-mono">{membership.fee} {membership.currency}</p></div>
-                  <div><p className="text-[9px] font-bold uppercase opacity-60">購入平台</p><p className="text-sm font-bold truncate">{membership.platform || '未填寫'}</p></div>
+                <h3 className={`text-[10px] font-black uppercase border-b pb-2 ${theme.cardText} ${isRetro ? 'border-[#1C3052]/30' : 'border-current/20 opacity-50'}`}>會費紀錄</h3>
+                
+                <div className={`flex justify-between items-center ${theme.cardText}`}>
+                  <p className="text-[10px] font-bold uppercase opacity-80">首年入會費</p>
+                  <p className="text-xs font-bold font-mono">{membership.fee} {membership.currency}</p>
                 </div>
-                <div className={`pt-2 border-t ${isRetro ? 'border-[#1C3052]/20' : 'border-black/5 dark:border-white/5'} ${theme.cardText}`}>
-                  <p className="text-[9px] font-bold uppercase opacity-60 mt-2">登入帳號</p>
-                  <p className="text-sm font-mono break-all font-bold">{membership.account || '未填寫'}</p>
+                
+                {validRenewals.length > 0 && (
+                  <div className={`space-y-2 pt-2 border-t ${isRetro ? 'border-[#1C3052]/20' : 'border-black/5 dark:border-white/5'}`}>
+                    <p className={`text-[9px] font-bold uppercase opacity-60 ${theme.cardText}`}>歷年續會紀錄</p>
+                    {validRenewals.map((r, idx) => (
+                      <div key={idx} className={`flex justify-between items-center ${theme.cardText}`}>
+                        <p className="text-[10px] font-mono opacity-80">{r.date}</p>
+                        <p className="text-xs font-bold font-mono">{r.fee} {membership.currency}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className={`flex justify-between items-center pt-3 border-t ${isRetro ? 'border-[#1C3052]/20' : 'border-black/5 dark:border-white/5'} ${theme.cardText}`}>
+                  <p className="text-[10px] font-bold uppercase">累積總花費</p>
+                  <p className="text-sm font-black font-mono">{totalFee.toLocaleString()} {membership.currency}</p>
                 </div>
               </div>
 
@@ -1364,33 +1463,66 @@
                 const yr = start.getFullYear().toString();
                 yMap[yr] = (yMap[yr] || 0) + toTWD(i.fee, i.currency);
              }
+          } else if (type === 'membership') {
+             const yr = i.startDate.split('-')[0];
+             yMap[yr] = (yMap[yr] || 0) + toTWD(i.fee, i.currency);
+             if (i.renewals) {
+               i.renewals.forEach(r => {
+                 if (r.date && r.fee) {
+                   const rYr = r.date.split('-')[0];
+                   yMap[rYr] = (yMap[rYr] || 0) + toTWD(r.fee, i.currency);
+                 }
+               });
+             }
           } else {
-             const yr = (type === 'membership' ? i.startDate : i.date || '2025-01-01').split('-')[0];
-             yMap[yr] = (yMap[yr] || 0) + toTWD(type === 'membership' ? i.fee : i.price, i.currency);
+             const yr = (i.date || '2025-01-01').split('-')[0];
+             yMap[yr] = (yMap[yr] || 0) + toTWD(i.price, i.currency);
           }
         });
         return Object.entries(yMap).sort((a,b) => b[0]-a[0]);
       }, [filtered, type, exchangeRates]);
 
-      const list = filtered.filter(i => {
-         if (!year) return false;
-         if (type === 'subscription' && i.startDate) {
-             const start = new Date(i.startDate);
-             const now = new Date();
-             let current = new Date(start);
-             let inYear = false;
-             let cycles = 0;
-             while(current <= now && cycles < 1000) {
-                if (current.getFullYear().toString() === year) inYear = true;
-                if (i.paymentCycle === 'monthly') current.setMonth(current.getMonth() + 1);
-                else current.setFullYear(current.getFullYear() + 1);
-                cycles++;
-             }
-             if (cycles === 0 && start.getFullYear().toString() === year) inYear = true;
-             return inYear;
-         }
-         return (type === 'membership' ? i.startDate : i.date || '2025-01-01').startsWith(year);
-      });
+      const list = useMemo(() => {
+        if (!year) return [];
+        const result = [];
+        filtered.forEach(i => {
+          if (type === 'subscription') {
+            const info = getSubInfoForYear(i, year, exchangeRates);
+            if (info.count > 0) {
+              result.push({
+                id: i.id, item: i, displayName: i.platform, displayPrice: info.total, subInfo: ` (${info.count}期)`, displayDate: `開始於 ${i.startDate}`
+              });
+            }
+          } else if (type === 'membership') {
+            if (i.startDate.startsWith(year)) {
+              result.push({
+                id: i.id + '-base', item: i, displayName: `${i.fandomName} (入會)`, displayPrice: toTWD(i.fee, i.currency), subInfo: '', displayDate: i.startDate
+              });
+            }
+            if (i.renewals) {
+              i.renewals.forEach((r, idx) => {
+                if (r.date && r.date.startsWith(year) && r.fee) {
+                  result.push({
+                    id: `${i.id}-r${idx}`, item: i, displayName: `${i.fandomName} (續會)`, displayPrice: toTWD(r.fee, i.currency), subInfo: '', displayDate: r.date
+                  });
+                }
+              });
+            }
+          } else {
+            if ((i.date || '2025-01-01').startsWith(year)) {
+              const name = (i.items && i.items.length > 0 ? (i.items.length === 1 ? i.items[0].name : `${i.items[0].name} 等 ${i.items.length} 件`) : i.itemName);
+              result.push({
+                id: i.id, item: i, displayName: name, displayPrice: toTWD(i.price, i.currency), subInfo: '', displayDate: i.date
+              });
+            }
+          }
+        });
+        return result.sort((a, b) => {
+           const dA = a.displayDate.replace('開始於 ', '');
+           const dB = b.displayDate.replace('開始於 ', '');
+           return new Date(dB) - new Date(dA);
+        });
+      }, [filtered, year, type, exchangeRates]);
 
       return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
@@ -1404,27 +1536,11 @@
                 <button key={y} onClick={() => setYear(y)} className={`w-full p-4 rounded-xl border flex justify-between items-center active:scale-95 transition-transform ${theme.name === 'Retro Pop' ? 'bg-white border-[#1C3052]' : 'border-white/10 bg-white/5'} ${theme.cardText}`}>
                   <span className="font-bold">{y} 年</span><span className="font-mono font-black">NT$ {t.toLocaleString()}</span>
                 </button>
-              )) : list.map(i => {
-                const displayName = type === 'membership' 
-                  ? i.fandomName 
-                  : type === 'subscription'
-                  ? i.platform
-                  : (i.items && i.items.length > 0 ? (i.items.length === 1 ? i.items[0].name : `${i.items[0].name} 等 ${i.items.length} 件`) : i.itemName);
-                
-                let displayPrice = 0;
-                let subInfo = '';
-                if (type === 'subscription') {
-                  const info = getSubInfoForYear(i, year, exchangeRates);
-                  displayPrice = info.total;
-                  subInfo = ` (${info.count}期)`;
-                } else {
-                  displayPrice = toTWD(type === 'membership' ? i.fee : i.price, i.currency);
-                }
-
+              )) : list.map(listItem => {
                 return (
-                  <button key={i.id} onClick={() => onSelectItem(i)} className={`w-full p-4 rounded-xl border text-left active:scale-95 transition-transform ${theme.name === 'Retro Pop' ? 'bg-white border-[#1C3052]' : 'border-white/10 bg-white/5'} ${theme.cardText}`}>
-                    <div className="flex justify-between items-start gap-2"><span className="text-xs font-black break-words">{displayName}</span><span className="text-xs font-mono font-black whitespace-nowrap">NT$ {displayPrice.toLocaleString()}<span className="text-[9px] opacity-60 ml-0.5">{subInfo}</span></span></div>
-                    <div className={`text-[9px] mt-1 opacity-50 font-mono`}>{type === 'membership' ? i.startDate : type === 'subscription' ? `開始於 ${i.startDate}` : i.date}</div>
+                  <button key={listItem.id} onClick={() => onSelectItem(listItem.item)} className={`w-full p-4 rounded-xl border text-left active:scale-95 transition-transform ${theme.name === 'Retro Pop' ? 'bg-white border-[#1C3052]' : 'border-white/10 bg-white/5'} ${theme.cardText}`}>
+                    <div className="flex justify-between items-start gap-2"><span className="text-xs font-black break-words">{listItem.displayName}</span><span className="text-xs font-mono font-black whitespace-nowrap">NT$ {listItem.displayPrice.toLocaleString()}<span className="text-[9px] opacity-60 ml-0.5">{listItem.subInfo}</span></span></div>
+                    <div className={`text-[9px] mt-1 opacity-50 font-mono`}>{listItem.displayDate}</div>
                   </button>
                 );
               })}
