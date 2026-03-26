@@ -730,7 +730,7 @@
       const [formData, setFormData] = useState({
         group: '', fandomName: '', memberName: '', memberNo: '', region: 'J-Pop', startDate: '', platform: '', fee: '', currency: 'TWD', account: '', color1: '#1C3052', color2: '#257199',
         items: [{ name: '', quantity: 1 }], price: '', buyType: 'preorder', estimatedArrival: '', url: '', seller: '', paymentMethod: 'cod', status: 'Pre-ordered', orderNo: '', date: '',
-        category: '泡泡', paymentCycle: 'monthly', deductionDate: '', notes: '' // 訂閱專屬欄位
+        category: '泡泡', paymentCycle: 'monthly', deductionDate: '', notes: '' 
       });
 
       useEffect(() => { 
@@ -768,8 +768,11 @@
 
       return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center p-4">
-          <div className={`w-full max-w-md rounded-t-3xl sm:rounded-2xl overflow-y-auto ${theme.card} animate-in slide-in-from-bottom-10 max-h-[90vh] shadow-2xl`}>
-            <div className="p-6">
+          {/* 強制設定外圍最大高度，並隱藏溢出，讓內層容器負責滾動 */}
+          <div className={`w-full max-w-md rounded-t-3xl sm:rounded-2xl overflow-hidden flex flex-col ${theme.card} animate-in slide-in-from-bottom-10 max-h-[90vh] shadow-2xl`}>
+            
+            {/* 內層滾動容器，包含標題與表單 */}
+            <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
               <div className="flex justify-between items-center mb-6 pb-2">
                 <h2 className={`text-sm font-black uppercase tracking-widest ${theme.cardText}`}>{titleText}{typeText}</h2>
                 <button type="button" onClick={onClose} className={theme.cardText}><X size={24} /></button>
