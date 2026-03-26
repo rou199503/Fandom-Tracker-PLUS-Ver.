@@ -117,7 +117,9 @@
         listItem: 'bg-[#fdfbf7] border-2 border-[#1C3052] text-[#1C3052]',
         themeBtn: 'bg-[#1C3052] text-white border-2 border-[#1C3052] shadow-[2px_2px_0_#D12627]',
         pill: 'bg-[#fdfbf7] border-2 border-[#1C3052] text-[#1C3052]',
-        pillBtn: 'border-2 border-[#1C3052] text-[#1C3052] bg-[#EBB134] shadow-[2px_2px_0_#1C3052]'
+        pillBtn: 'border-2 border-[#1C3052] text-[#1C3052] bg-[#EBB134] shadow-[2px_2px_0_#1C3052]',
+        editBtn: 'bg-white border-2 border-[#1C3052] text-[#1C3052] shadow-[4px_4px_0_#1C3052]',
+        cancelBtn: 'bg-white border-2 border-[#1C3052] text-[#1C3052]'
       },
       dark: {
         name: 'Midnight',
@@ -137,7 +139,9 @@
         listItem: 'bg-orange-500/10 border border-orange-500/20 text-orange-200',
         themeBtn: 'bg-white/10 text-white',
         pill: 'bg-white/5 text-gray-400 border border-white/10',
-        pillBtn: 'border border-gray-600 text-gray-300 hover:bg-white/5'
+        pillBtn: 'border border-gray-600 text-gray-300 hover:bg-white/5',
+        editBtn: 'bg-white/10 border border-white/20 text-white hover:bg-white/20',
+        cancelBtn: 'bg-transparent border border-gray-600 text-gray-300 hover:bg-white/5'
       },
       light: {
         name: 'Light',
@@ -157,7 +161,9 @@
         listItem: 'bg-orange-50 border border-orange-100 text-orange-800',
         themeBtn: 'bg-gray-100 text-gray-800',
         pill: 'bg-gray-200/50 text-gray-600',
-        pillBtn: 'border border-gray-300 text-gray-600 hover:bg-gray-50'
+        pillBtn: 'border border-gray-300 text-gray-600 hover:bg-gray-50',
+        editBtn: 'bg-black/5 border border-black/10 text-gray-900 hover:bg-black/10',
+        cancelBtn: 'bg-transparent border border-gray-300 text-gray-600 hover:bg-black/5'
       }
     };
 
@@ -479,7 +485,7 @@
           {isFormModalOpen && <FormModal theme={theme} type={formType} initialData={editingItem} onClose={() => { setIsFormModalOpen(false); setEditingItem(null); }} onSave={handleSave} />}
           
           {selectedMembership && <MembershipDetailsModal theme={theme} membership={selectedMembership} onClose={() => setSelectedMembership(null)} onEdit={() => { setFormType('membership'); setEditingItem(selectedMembership); setSelectedMembership(null); setTimeout(() => setIsFormModalOpen(true), 50); }} onDelete={() => setDeleteConfirm({ type: 'membership', id: selectedMembership.id })} />}
-          {selectedMerch && <MerchDetailsModal theme={theme} merch={selectedMerch} onClose={() => setSelectedMerch(null)} onEdit={() => { setFormType('merch'); setEditingItem(selectedMerch); setSelectedMerch(null); setTimeout(() => setIsFormModalOpen(true), 50); }} onDelete={() => setDeleteConfirm({ type: 'merch', id: selectedMerch.id })} />}
+          {selectedMerch && <MerchDetailsModal theme={theme} merch={selectedMerch} memberships={memberships} onClose={() => setSelectedMerch(null)} onEdit={() => { setFormType('merch'); setEditingItem(selectedMerch); setSelectedMerch(null); setTimeout(() => setIsFormModalOpen(true), 50); }} onDelete={() => setDeleteConfirm({ type: 'merch', id: selectedMerch.id })} />}
           {selectedSubscription && <SubscriptionDetailsModal theme={theme} subscription={selectedSubscription} memberships={memberships} onClose={() => setSelectedSubscription(null)} onEdit={() => { setFormType('subscription'); setEditingItem(selectedSubscription); setSelectedSubscription(null); setTimeout(() => setIsFormModalOpen(true), 50); }} onDelete={() => setDeleteConfirm({ type: 'subscription', id: selectedSubscription.id })} />}
           
           {deleteConfirm && <ConfirmModal theme={theme} onConfirm={executeDelete} onCancel={() => setDeleteConfirm(null)} />}
@@ -1130,7 +1136,7 @@
               </div>
 
               <div className="flex gap-3">
-                 <button onClick={onEdit} className={`${btnBase} ${isRetro ? 'bg-white border-2 border-[#1C3052] text-[#1C3052] shadow-[4px_4px_0_#1C3052]' : 'bg-white/10 border-white/10 text-white'}`}><Pencil size={18}/> 編輯</button>
+                 <button onClick={onEdit} className={`${btnBase} ${theme.editBtn}`}><Pencil size={18}/> 編輯</button>
                  <button onClick={onDelete} className={`${btnBase} bg-red-600 border-2 border-red-700 text-white ${isRetro ? 'shadow-[4px_4px_0_#1C3052]' : 'shadow-lg'}`}><Trash2 size={18}/> 刪除</button>
               </div>
             </div>
@@ -1183,7 +1189,7 @@
               </div>
 
               <div className="flex gap-3">
-                 <button onClick={onEdit} className={`${btnBase} ${isRetro ? 'bg-white border-2 border-[#1C3052] text-[#1C3052] shadow-[4px_4px_0_#1C3052]' : 'bg-white/10 border-white/10 text-white'}`}><Pencil size={18}/> 編輯</button>
+                 <button onClick={onEdit} className={`${btnBase} ${theme.editBtn}`}><Pencil size={18}/> 編輯</button>
                  <button onClick={onDelete} className={`${btnBase} bg-red-600 border-2 border-red-700 text-white ${isRetro ? 'shadow-[4px_4px_0_#1C3052]' : 'shadow-lg'}`}><Trash2 size={18}/> 刪除</button>
               </div>
             </div>
@@ -1192,7 +1198,7 @@
       );
     }
 
-    function MerchDetailsModal({ theme, merch, onClose, onEdit, onDelete }) {
+    function MerchDetailsModal({ theme, merch, memberships, onClose, onEdit, onDelete }) {
       const pmMap = { cod: '貨到付款', credit_card: '刷卡', bank_transfer: '匯款' };
       const btnBase = "flex-1 flex items-center justify-center gap-2 py-4 rounded-xl border-2 font-black text-sm active:translate-y-1 transition-all box-border";
       const isRetro = theme.name === 'Retro Pop';
@@ -1201,13 +1207,21 @@
         ? (merch.items.length === 1 ? merch.items[0].name : `${merch.items[0].name} 等 ${merch.items.length} 項商品`)
         : merch.itemName;
 
+      // 尋找對應的會員卡以取得應援色
+      const matchedMem = memberships ? memberships.find(m => m.group === merch.group) : null;
+
       return (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
           <div className={`w-full max-sm:max-w-xs max-w-sm rounded-3xl overflow-hidden ${theme.card} animate-in zoom-in-95 flex flex-col relative shadow-2xl max-h-[90vh]`}>
             <button onClick={onClose} className={`absolute top-4 right-4 z-20 ${theme.cardText}`}><X size={24} /></button>
             <div className="overflow-y-auto p-6 space-y-6 pb-8">
               <div className="text-center pt-4">
-                 <div className={`w-16 h-16 mx-auto mb-4 border-4 flex items-center justify-center transform rotate-45 ${theme.cardText} border-current`}><span className="font-black text-3xl transform -rotate-45">{merch.group.charAt(0)}</span></div>
+                 <div 
+                   className={`w-16 h-16 mx-auto mb-4 border-4 flex items-center justify-center transform rotate-45 ${!matchedMem ? theme.cardText + ' border-current' : ''}`}
+                   style={matchedMem ? { backgroundImage: `linear-gradient(135deg, ${matchedMem.color1}, ${matchedMem.color2})`, borderColor: 'white' } : {}}
+                 >
+                   <span className={`${matchedMem ? 'text-white' : ''} font-black text-3xl transform -rotate-45`}>{merch.group.charAt(0)}</span>
+                 </div>
                  <h2 className={`text-2xl font-black tracking-widest ${theme.cardText}`}>{merch.group}</h2>
                  <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${theme.cardText} opacity-60`}>Receipt</p>
               </div>
@@ -1274,7 +1288,7 @@
               </div>
 
               <div className="flex gap-3">
-                 <button onClick={onEdit} className={`${btnBase} ${isRetro ? 'bg-white border-2 border-[#1C3052] text-[#1C3052] shadow-[4px_4px_0_#1C3052]' : 'bg-white/10 border-white/20 text-white'}`}><Pencil size={18}/> 編輯</button>
+                 <button onClick={onEdit} className={`${btnBase} ${theme.editBtn}`}><Pencil size={18}/> 編輯</button>
                  <button onClick={onDelete} className={`${btnBase} bg-red-600 border-2 border-red-700 text-white ${isRetro ? 'shadow-[4px_4px_0_#1C3052]' : 'shadow-lg'}`}><Trash2 size={18}/> 刪除</button>
               </div>
             </div>
@@ -1284,7 +1298,6 @@
     }
 
     function ConfirmModal({ theme, onConfirm, onCancel }) {
-      const isRetro = theme.name === 'Retro Pop';
       return (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
           <div className={`w-full max-w-xs p-8 rounded-3xl ${theme.card} text-center space-y-6 border-4 border-red-500 shadow-2xl`}>
@@ -1294,7 +1307,7 @@
                <p className={`text-xs opacity-60 ${theme.cardText}`}>此動作無法復原，<br/>該筆資料將永久從紀錄本中移除。</p>
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={onCancel} className={`flex-1 py-4 rounded-xl border-2 font-black text-sm active:scale-95 transition-transform ${isRetro ? 'bg-white border-[#1C3052] text-[#1C3052]' : 'border-gray-500 text-white'}`}>取消</button>
+              <button onClick={onCancel} className={`flex-1 py-4 rounded-xl font-black text-sm active:scale-95 transition-transform ${theme.cancelBtn}`}>取消</button>
               <button onClick={onConfirm} className={`flex-1 py-4 rounded-xl bg-red-600 border-2 border-red-700 text-white font-black text-sm active:scale-95 transition-transform shadow-lg`}>確認刪除</button>
             </div>
           </div>
