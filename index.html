@@ -1086,11 +1086,11 @@
                   {m.status === 'Received' ? <CheckCircle2 className="w-8 h-8" /> : <div className="w-8 h-8 rounded-full border-4 border-current opacity-20"></div>}
                 </button>
                 <div className="flex-1 min-w-0" onClick={() => onOpenDetails(m)}>
-                  <h3 className={`font-black text-sm uppercase truncate ${theme.cardText}`}>{m.group}</h3>
-                  <p className={`text-xs mt-1 truncate ${m.status === 'Received' ? 'line-through opacity-40' : theme.cardSub}`}>[{m.buyType === 'instock' ? '現貨' : '預購'}] {displayTitle}</p>
+                  <h3 className={`font-black text-sm uppercase truncate ${theme.cardText} ${m.status === 'Received' ? 'opacity-60' : ''}`}>{m.group}</h3>
+                  <p className={`text-xs mt-1 truncate ${theme.cardSub} ${m.status === 'Received' ? 'line-through opacity-60' : ''}`}>[{m.buyType === 'instock' ? '現貨' : '預購'}] {displayTitle}</p>
                   <div className="flex justify-between items-center mt-2">
                     <span className={`text-[10px] ${theme.cardText} opacity-40 font-mono font-bold tracking-tighter`}>{m.date}</span>
-                    <span className={`font-mono text-sm font-black ${m.status === 'Received' ? 'opacity-30' : theme.accentIcon}`}>{Number(m.price).toLocaleString()} {m.currency}</span>
+                    <span className={`font-mono text-sm font-black ${m.status === 'Received' ? `${theme.cardText} opacity-50` : theme.accentIcon}`}>{Number(m.price).toLocaleString()} {m.currency}</span>
                   </div>
                 </div>
               </div>
